@@ -1,65 +1,55 @@
 import streamlit as st
 import io
-import zipfile
 import pdfplumber
 from PyPDF2 import PdfReader, PdfWriter
 
-def extract_employee_code(pdf_path, left, top, right, bottom):
-    with pdfplumber.open(pdf_path) as pdf:
+def extract_employee_code(pdf_file):
+    with pdfplumber.open(pdf_file) as pdf:
         first_page = pdf.pages[0]
-        crop_box = (left, top, right, bottom)
+        crop_box = (68, 0, 460, 27)  # 確認済みの座標
         cropped_page = first_page.crop(crop_box)
         text = cropped_page.extract_text()
-        st.write(f"Extracted text: {text}")  # デバッグ用
         employee_code = ''.join(filter(str.isdigit, text))[:6]
         return employee_code if len(employee_code) == 6 else "unknown"
 
-def split_pdf_to_zip(pdf_file, left, top, right, bottom):
-    pdf_path = io.BytesIO(pdf_file.getvalue())
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
-        pdf_reader = PdfReader(pdf_file)
-        num_pages = len(pdf_reader.pages)
+def process_pdfs(pdf_files):
+    processed_files = []
+    for pdf_file in pdf_files:
+        pdf_content = pdf_file.read()
+        pdf_buffer = io.BytesIO(pdf_content)
         
-        employee_code = extract_employee_code(pdf_path, left, top, right, bottom)
+        employee_code = extract_employee_code(pdf_buffer)
         
-        for page in range(num_pages):
-            pdf_writer = PdfWriter()
-            pdf_writer.add_page(pdf_reader.pages[page])
-            
-            page_buffer = io.BytesIO()
-            pdf_writer.write(page_buffer)
-            page_buffer.seek(0)
-            
-            zip_file.writestr(f"{employee_code}_page_{page + 1}.pdf", page_buffer.getvalue())
+        # PDFWriter を使用してPDFコンテンツをコピー
+        pdf_writer = PdfWriter()
+        pdf_reader = PdfReader(pdf_buffer)
+        for page in pdf_reader.pages:
+            pdf_writer.add_page(page)
+        
+        output_buffer = io.BytesIO()
+        pdf_writer.write(output_buffer)
+        output_buffer.seek(0)
+        
+        processed_files.append({
+            "filename": f"{employee_code}.pdf",
+            "content": output_buffer.getvalue()
+        })
     
-    return zip_buffer, num_pages, employee_code
+    return processed_files
 
-st.title("PDF Splitter with Employee Code (Debug Mode)")
+st.title("PDF Employee Code Extractor")
 
-uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+uploaded_files = st.file_uploader("Choose PDF files", type="pdf", accept_multiple_files=True)
 
-# 座標入力用のスライダーを追加
-left = st.slider("Left coordinate", 0, 1000, 100)
-top = st.slider("Top coordinate", 0, 1000, 100)
-right = st.slider("Right coordinate", 0, 1000, 200)
-bottom = st.slider("Bottom coordinate", 0, 1000, 150)
-
-if uploaded_file is not None:
-    zip_buffer, num_pages, employee_code = split_pdf_to_zip(uploaded_file, left, top, right, bottom)
+if uploaded_files:
+    processed_files = process_pdfs(uploaded_files)
     
-    st.write(f"Total number of pages: {num_pages}")
-    st.write(f"Extracted Employee Code: {employee_code}")
+    st.write(f"Processed {len(processed_files)} file(s)")
     
-    if employee_code != "unknown":
+    for file in processed_files:
         st.download_button(
-            label="Download ZIP file with all pages",
-            data=zip_buffer.getvalue(),
-            file_name=f"{employee_code}_split_pages.zip",
-            mime="application/zip"
+            label=f"Download {file['filename']}",
+            data=file['content'],
+            file_name=file['filename'],
+            mime="application/pdf"
         )
-    else:
-        st.write("Employee code not found. Please adjust the coordinates.")
-
-st.write("Current coordinates:")
-st.write(f"Left: {left}, Top: {top}, Right: {right}, Bottom: {bottom}")
