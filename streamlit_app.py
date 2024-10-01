@@ -1,25 +1,29 @@
 import streamlit as st
 import io
 import zipfile
-import re
+import pdfplumber
 from PyPDF2 import PdfReader, PdfWriter
 
-def extract_employee_code(pdf_reader):
-    for page in pdf_reader.pages:
-        text = page.extract_text()
-        # 6桁の数字を探す
-        match = re.search(r'\b\d{6}\b', text)
-        if match:
-            return match.group(0)
-    return "unknown"  # 従業員コードが見つからない場合
+def extract_employee_code(pdf_path):
+    with pdfplumber.open(pdf_path) as pdf:
+        first_page = pdf.pages[0]
+        # ここで座標を調整します。実際のPDFに合わせて調整が必要です。
+        # 例: bbox=(左, 上, 右, 下)
+        crop_box = (100, 100, 200, 150)  # この値は実際のPDFに合わせて調整してください
+        cropped_page = first_page.crop(crop_box)
+        text = cropped_page.extract_text()
+        # 6桁の数字を抽出
+        employee_code = ''.join(filter(str.isdigit, text))[:6]
+        return employee_code if len(employee_code) == 6 else "unknown"
 
 def split_pdf_to_zip(pdf_file):
+    pdf_path = io.BytesIO(pdf_file.getvalue())
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
         pdf_reader = PdfReader(pdf_file)
         num_pages = len(pdf_reader.pages)
         
-        employee_code = extract_employee_code(pdf_reader)
+        employee_code = extract_employee_code(pdf_path)
         
         for page in range(num_pages):
             pdf_writer = PdfWriter()
