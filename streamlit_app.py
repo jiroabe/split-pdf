@@ -1,20 +1,24 @@
 import streamlit as st
-import pdfplumber
 import io
 import zipfile
+from PyPDF2 import PdfReader, PdfWriter
+from PIL import Image
 
 def split_pdf_to_zip(pdf_file):
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
-        with pdfplumber.open(pdf_file) as pdf:
-            num_pages = len(pdf.pages)
+        pdf_reader = PdfReader(pdf_file)
+        num_pages = len(pdf_reader.pages)
+        
+        for page in range(num_pages):
+            pdf_writer = PdfWriter()
+            pdf_writer.add_page(pdf_reader.pages[page])
             
-            for page in range(num_pages):
-                pdf_writer = io.BytesIO()
-                pdf_page = pdf.pages[page]
-                pdf_page.to_pdf(pdf_writer)
-                
-                zip_file.writestr(f"page_{page + 1}.pdf", pdf_writer.getvalue())
+            page_buffer = io.BytesIO()
+            pdf_writer.write(page_buffer)
+            page_buffer.seek(0)
+            
+            zip_file.writestr(f"page_{page + 1}.pdf", page_buffer.getvalue())
     
     return zip_buffer, num_pages
 
